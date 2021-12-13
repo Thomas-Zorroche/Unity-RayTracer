@@ -61,12 +61,46 @@ void IntersectPlan(Ray ray, inout RayHit bestHit)
         bestHit.normal = float3(0.0f, 1.0f, 0.0f);
     }
 }
+void IntersectSphere(Ray ray, inout RayHit bestHit, float3 center, float radius)
+{
+    float3 camToSphere = ray.origin - center;
+    
+    float a = dot(ray.direction, ray.direction);
+    float b = 2 * dot(ray.direction, camToSphere);
+    float c = dot(camToSphere, camToSphere) - (radius * radius);
+
+    float delta = b*b - 4*a*c;
+    if (delta < 0)
+        return;
+    
+    float dst = 1.#INF;
+    if (delta == 0)
+    {
+        dst = -b / a;
+    }
+    else if(delta > 0)
+    {
+        float sqrtDelta = sqrt(delta);
+        float a1 = (-b + sqrtDelta) / 2 * a;
+        float a2 = (-b - sqrtDelta) / 2 * a;
+        dst = a1 < a2 ? a1 : a2;
+    }
+
+    if (dst > 0 && dst < bestHit.distance)
+    {
+        bestHit.distance = dst;
+        bestHit.position = ray.origin + dst * ray.direction;
+        bestHit.normal = normalize(bestHit.position - center);
+    }
+}
 
 RayHit Trace(Ray ray)
 {
-    // Closest hit to the camera
+    // Compute closest hit on objects in the scene
     RayHit bestHit = CreateRayHit();
+
     IntersectPlan(ray, bestHit);
+    IntersectSphere(ray, bestHit, float3(0, 3, 0), 1.5f);
     return bestHit;
 }
 
