@@ -9,10 +9,23 @@ public class RayTracingMaster : MonoBehaviour
 
     private RenderTexture _targetTexture;
     private Camera _camera;
+    private uint _currentSample = 0;
+    private Material _addMaterial;
 
     private void Awake()
     {
         _camera = GetComponent<Camera>();
+        if (_addMaterial == null)
+            _addMaterial = new Material(Shader.Find("Hidden/AddShader"));
+    }
+
+    private void Update()
+    {
+        if (transform.hasChanged)
+        {
+            _currentSample = 0;
+            transform.hasChanged = false;
+        }
     }
 
     private void SetShaderUniforms()
@@ -20,6 +33,7 @@ public class RayTracingMaster : MonoBehaviour
         rayTracingShader.SetMatrix("uCameraToWorld", _camera.cameraToWorldMatrix);
         rayTracingShader.SetMatrix("uCameraInverseProjection", _camera.projectionMatrix.inverse);
         rayTracingShader.SetTexture(0, "uSkybox", skybox);
+        rayTracingShader.SetVector("uPixelOffset", new Vector2(Random.value, Random.value));
     }
 
     private void OnRenderImage(RenderTexture source, RenderTexture destination)
@@ -39,13 +53,17 @@ public class RayTracingMaster : MonoBehaviour
         rayTracingShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
 
         // Display the _targetTexture to the screen
+        _addMaterial.SetFloat("uSample", _currentSample);
         Graphics.Blit(_targetTexture, destination);
+        _currentSample++;
     }
 
     private void InitializeRenderTexture()
     {
         if (_targetTexture == null || _targetTexture.width != Screen.width || _targetTexture.height != Screen.height)
         {
+            _currentSample = 0;
+            
             if (_targetTexture != null)
                 _targetTexture.Release(); // Release render texture if we already have one
 
