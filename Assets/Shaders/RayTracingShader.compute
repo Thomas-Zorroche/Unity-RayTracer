@@ -1,0 +1,107 @@
+#pragma kernel CSMain
+
+RWTexture2D<float4> Result;
+float4x4 uCameraToWorld;
+float4x4 uCameraInverseProjection;
+Texture2D<float4> uSkybox;
+SamplerState sampleruSkybox;
+
+static const float PI = 3.14159265f;
+
+struct Ray
+{
+    float3 origin;
+    float3 direction;
+};
+Ray CreateRay(float3 origin, float3 direction)
+{
+    Ray ray;
+    ray.origin = origin;
+    ray.direction = direction;
+    return ray;
+}
+
+Ray CreateCameraRay(float2 uv)
+{
+    // Camera origin --> world space
+    float3 origin = mul(uCameraToWorld, float4(0.0f, 0.0f, 0.0f, 1.0f)).xyz;
+
+    // Invert the perspective projection of the view-space position
+    float3 direction = mul(uCameraInverseProjection, float4(uv, 0.0f, 1.0f)).xyz;
+    // Transform the direction from camera to world space and normalize
+    direction = mul(uCameraToWorld, float4(direction, 0.0f)).xyz;
+    direction = normalize(direction);
+
+    return CreateRay(origin, direction);
+}
+
+struct RayHit
+{
+    float3 position;
+    float distance;
+    float3 normal;
+};
+RayHit CreateRayHit()
+{
+    RayHit hit;
+    hit.position = float3(0.0f, 0.0f, 0.0f);
+    hit.distance = 1.#INF;
+    hit.normal = float3(0.0f, 0.0f, 0.0f);
+    return hit;
+}
+
+void IntersectPlan(Ray ray, inout RayHit bestHit)
+{
+    // Plan : y = 0
+    float distanceToPlan = -ray.origin.y / ray.direction.y;
+    if (distanceToPlan > 0 && distanceToPlan < bestHit.distance)
+    {
+        bestHit.distance = distanceToPlan;
+        bestHit.position = ray.origin + distanceToPlan * ray.direction;
+        bestHit.normal = float3(0.0f, 1.0f, 0.0f);
+    }
+}
+
+RayHit Trace(Ray ray)
+{
+    // Closest hit to the camera
+    RayHit bestHit = CreateRayHit();
+    IntersectPlan(ray, bestHit);
+    return bestHit;
+}
+
+float3 Shade(inout Ray ray, RayHit hit)
+{
+    if (hit.distance < 1.#INF)
+    {
+        // Normal Shading
+        return hit.normal * 0.5f + 0.5f;
+    }
+    else
+    {
+        // Sample the skybox
+        float theta = -acos(ray.direction.y) / PI;
+        float phi = -atan2(ray.direction.x, -ray.direction.z) / PI * 0.5f;
+        return uSkybox.SampleLevel(sampleruSkybox, float2(phi, theta), 0).xyz;
+    }
+}
+
+
+[numthreads(8,8,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    // Get dimensions of the RenderTexture
+    uint width, height;
+    Result.GetDimensions(width, height);
+
+    // Transform pixel to [-1, 1]
+    float2 uv = float2((id.xy + float2(0.5f, 0.5f)) / float2(width, height) * 2.0f - 1.0f);
+
+    // Create a ray from the camera
+    Ray ray = CreateCameraRay(uv);
+
+    // Trace and Shade
+    RayHit hit = Trace(ray);
+    float3 result = Shade(ray, hit);
+    Result[id.xy] = float4(result, 1);
+}
