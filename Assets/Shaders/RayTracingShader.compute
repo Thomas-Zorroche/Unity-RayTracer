@@ -8,17 +8,20 @@ SamplerState sampleruSkybox;
 float2 uPixelOffset;
 
 static const float PI = 3.14159265f;
+static const int MAX_RAYS = 8;
 
 struct Ray
 {
     float3 origin;
     float3 direction;
+    float3 energy;
 };
 Ray CreateRay(float3 origin, float3 direction)
 {
     Ray ray;
     ray.origin = origin;
     ray.direction = direction;
+    ray.energy = float3(1.0f, 1.0f, 1.0f);
     return ray;
 }
 
@@ -110,7 +113,12 @@ float3 Shade(inout Ray ray, RayHit hit)
     if (hit.distance < 1.#INF)
     {
         // Normal Shading
-        return hit.normal * 0.5f + 0.5f;
+        //return hit.normal * 0.5f + 0.5f;
+
+        float3 specular = float3(0.6f, 0.6f, 0.6f);
+        ray.direction = reflect(ray.direction, hit.normal);
+        ray.energy *= specular;
+        return float3(0.0f, 0.0f, 0.0f);
     }
     else
     {
@@ -136,7 +144,16 @@ void CSMain (uint3 id : SV_DispatchThreadID)
     Ray ray = CreateCameraRay(uv);
 
     // Trace and Shade
-    RayHit hit = Trace(ray);
-    float3 result = Shade(ray, hit);
-    Result[id.xy] = float4(result, 1);
+    float3 finalColor = float3(0, 0, 0);
+    for (int i = 0; i < MAX_RAYS; i++)
+    {
+        RayHit hit = Trace(ray);
+        finalColor += ray.energy * Shade(ray, hit);
+
+        // if ray has no more energy, break
+        if (!any(ray.energy))
+            break;
+    }
+
+    Result[id.xy] = float4(finalColor, 1);
 }

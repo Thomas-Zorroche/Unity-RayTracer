@@ -54,7 +54,7 @@ public class RayTracingMaster : MonoBehaviour
 
         // Display the _targetTexture to the screen
         _addMaterial.SetFloat("uSample", _currentSample);
-        Graphics.Blit(_targetTexture, destination);
+        Graphics.Blit(_targetTexture, destination, _addMaterial);
         _currentSample++;
     }
 
