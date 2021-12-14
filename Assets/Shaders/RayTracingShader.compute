@@ -1,11 +1,23 @@
 #pragma kernel CSMain
 
+// Uniforms
 RWTexture2D<float4> Result;
 float4x4 uCameraToWorld;
 float4x4 uCameraInverseProjection;
 Texture2D<float4> uSkybox;
 SamplerState sampleruSkybox;
 float2 uPixelOffset;
+
+// Compute Buffers
+struct Sphere 
+{
+    float3 center;
+    float radius;
+    float3 diffuse;
+    float3 specular;
+};
+StructuredBuffer<Sphere> _Spheres;
+
 
 static const float PI = 3.14159265f;
 static const int MAX_RAYS = 8;
@@ -44,6 +56,8 @@ struct RayHit
     float3 position;
     float distance;
     float3 normal;
+    float3 diffuse;
+    float3 specular;
 };
 RayHit CreateRayHit()
 {
@@ -51,6 +65,7 @@ RayHit CreateRayHit()
     hit.position = float3(0.0f, 0.0f, 0.0f);
     hit.distance = 1.#INF;
     hit.normal = float3(0.0f, 0.0f, 0.0f);
+    hit.diffuse = float3(0.0f, 0.0f, 0.0f);
     return hit;
 }
 
@@ -63,15 +78,17 @@ void IntersectPlan(Ray ray, inout RayHit bestHit)
         bestHit.distance = distanceToPlan;
         bestHit.position = ray.origin + distanceToPlan * ray.direction;
         bestHit.normal = float3(0.0f, 1.0f, 0.0f);
+        bestHit.diffuse = float3(0.6f, 0.6f, 0.6f);
+        bestHit.specular = float3(0.05f, 0.05f, 0.05f);
     }
 }
-void IntersectSphere(Ray ray, inout RayHit bestHit, float3 center, float radius)
+void IntersectSphere(Ray ray, inout RayHit bestHit, Sphere sphere)
 {
-    float3 camToSphere = ray.origin - center;
+    float3 camToSphere = ray.origin - sphere.center;
     
     float a = dot(ray.direction, ray.direction);
     float b = 2 * dot(ray.direction, camToSphere);
-    float c = dot(camToSphere, camToSphere) - (radius * radius);
+    float c = dot(camToSphere, camToSphere) - (sphere.radius * sphere.radius);
 
     float delta = b*b - 4*a*c;
     if (delta < 0)
@@ -94,7 +111,9 @@ void IntersectSphere(Ray ray, inout RayHit bestHit, float3 center, float radius)
     {
         bestHit.distance = dst;
         bestHit.position = ray.origin + dst * ray.direction;
-        bestHit.normal = normalize(bestHit.position - center);
+        bestHit.normal = normalize(bestHit.position - sphere.center);
+        bestHit.diffuse = sphere.diffuse;
+        bestHit.specular = sphere.specular;
     }
 }
 
@@ -103,8 +122,14 @@ RayHit Trace(Ray ray)
     // Compute closest hit on objects in the scene
     RayHit bestHit = CreateRayHit();
 
+    // Plan
     IntersectPlan(ray, bestHit);
-    IntersectSphere(ray, bestHit, float3(0, 3, 0), 1.5f);
+
+    // Spheres
+    uint nSpheres, stride;
+    _Spheres.GetDimensions(nSpheres, stride);
+    for (uint i = 0; i < nSpheres; i++)
+        IntersectSphere(ray, bestHit, _Spheres[i]);
     return bestHit;
 }
 
@@ -115,13 +140,16 @@ float3 Shade(inout Ray ray, RayHit hit)
         // Normal Shading
         //return hit.normal * 0.5f + 0.5f;
 
-        float3 specular = float3(0.6f, 0.6f, 0.6f);
+        float3 specular = float3(0.05f, 0.05f, 0.05f);
         ray.direction = reflect(ray.direction, hit.normal);
-        ray.energy *= specular;
-        return float3(0.0f, 0.0f, 0.0f);
+        ray.energy *= hit.specular;
+        
+        // Shading
+        return saturate(hit.diffuse);
     }
     else
     {
+        ray.energy = 0.0f;
         // Sample the skybox
         float theta = -acos(ray.direction.y) / PI;
         float phi = -atan2(ray.direction.x, -ray.direction.z) / PI * 0.5f;

@@ -12,11 +12,31 @@ public class RayTracingMaster : MonoBehaviour
     private uint _currentSample = 0;
     private Material _addMaterial;
 
+    private List<Sphere> _spheres;
+    private ComputeBuffer _sphereBuffer;
+
+    struct Sphere // 40
+    {
+        public Vector3 center; // 12
+        public float radius; // 4
+        public Vector3 diffuse; // 12
+        public Vector3 specular; // 12
+    }
+
     private void Awake()
     {
         _camera = GetComponent<Camera>();
+        _spheres = new List<Sphere>();
         if (_addMaterial == null)
             _addMaterial = new Material(Shader.Find("Hidden/AddShader"));
+    
+        SetupScene();
+    }
+
+    private void OnDisable() 
+    {
+        if (_sphereBuffer != null)
+            _sphereBuffer.Release();
     }
 
     private void Update()
@@ -28,12 +48,47 @@ public class RayTracingMaster : MonoBehaviour
         }
     }
 
+    private void SetupScene()
+    {
+        _spheres.Clear();
+
+        for (int i = 0; i < 30; i++)
+        {
+            var sphere = new Sphere();
+            sphere.radius = Random.Range(0.3f, 1.5f);
+            sphere.center = new Vector3(Random.Range(-20, 20), 3.0f, Random.Range(-20, 20));
+
+            Color color = Random.ColorHSV();
+            bool metal = Random.value < 0.5f;
+            sphere.diffuse = metal ? Vector4.zero : new Vector4(color.r, color.g, color.b);
+            sphere.specular = metal ? new Vector4(color.r, color.g, color.b) : new Vector4(0.04f, 0.04f, 0.04f);
+            _spheres.Add(sphere);
+
+            // TODO : check for collision
+
+        }
+
+        if (_sphereBuffer != null)
+            _sphereBuffer.Release();
+
+        if (_spheres.Count > 0)
+        {
+            _sphereBuffer = new ComputeBuffer(_spheres.Count, 40);
+            _sphereBuffer.SetData(_spheres);
+        }
+        else
+        {
+            Debug.LogWarning("No Spheres");
+        }
+    }
+
     private void SetShaderUniforms()
     {
         rayTracingShader.SetMatrix("uCameraToWorld", _camera.cameraToWorldMatrix);
         rayTracingShader.SetMatrix("uCameraInverseProjection", _camera.projectionMatrix.inverse);
         rayTracingShader.SetTexture(0, "uSkybox", skybox);
         rayTracingShader.SetVector("uPixelOffset", new Vector2(Random.value, Random.value));
+        rayTracingShader.SetBuffer(0, "_Spheres", _sphereBuffer);
     }
 
     private void OnRenderImage(RenderTexture source, RenderTexture destination)
